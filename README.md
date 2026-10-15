@@ -1,8 +1,8 @@
 # PS5 XInput Controller Manager
 
-Use supported Xbox and 8BitDo controllers on a PS5 through USB or
-the console's Bluetooth radio. A local web interface manages pairing, saved
-controllers, automatic reconnect and input monitoring.
+Use supported Xbox and 8BitDo controllers (Ultimate 2.4GHZ and Ultimate 2C) on a PS5 
+through USB or the console's Bluetooth radio. A local web interface manages pairing, 
+saved controllers, automatic reconnect and input monitoring.
 
 This project builds on **FGG STORE / Fathi Ghanem's
 [FGG-XSense](https://github.com/FGGstore/FGG-XSense)**. Their original USB and
