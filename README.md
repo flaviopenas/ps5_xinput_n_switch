@@ -1,6 +1,6 @@
 # PS5 XInput_N_Switch Controller Manager
 
-Use supported Xbox and 8BitDo controllers (Ultimate 2.4GHZ and Ultimate 2C) on a PS5 
+Use supported Xbox, Switch and 8BitDo controllers (Ultimate 2.4GHZ and Ultimate 2C) on a PS5 
 through USB or the console's Bluetooth radio. A local web interface manages pairing, 
 saved controllers, automatic reconnect and input monitoring.
 
