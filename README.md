@@ -134,5 +134,7 @@ testing_tools/     Tests, probes, alternate builds, tools and historical materia
 - [Controller Manager guide](docs/controller-manager.md)
 - Testing tools, alternate firmware and investigation history: `testing_tools/README.md`
 
+WARNING: This project was vibecoded with help from OpenAI Codex.
+
 This project retains the upstream [GPL-3.0 license](LICENSE). Bundled libraries
 retain their original licenses; see [third-party inventory](third_party/README.md).
