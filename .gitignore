@@ -1,0 +1,13 @@
+/.tools/
+/build/
+/dist/
+/testing_tools/.tools/
+/testing_tools/build/
+/testing_tools/dist/
+/testing_tools/artifacts/
+/testing_tools/upstream/
+__pycache__/
+*.log
+*.sprx
+*.self
+*.elf
