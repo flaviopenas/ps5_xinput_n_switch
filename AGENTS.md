@@ -3,7 +3,7 @@
 ## Purpose and scope
 
 PS5 XInput Controller Manager lets supported Xbox and 8BitDo controllers control
-a jailbroken PS5 through USB and Bluetooth. A native background service owns
+a PS5 through USB and Bluetooth. A native background service owns
 the controllers and serves an embedded web interface.
 
 The main project has **one public payload, targeting firmware 4.03**:

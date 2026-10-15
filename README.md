@@ -1,6 +1,6 @@
 # PS5 XInput Controller Manager
 
-Use supported Xbox and 8BitDo controllers on a jailbroken PS5 through USB or
+Use supported Xbox and 8BitDo controllers on a PS5 through USB or
 the console's Bluetooth radio. A local web interface manages pairing, saved
 controllers, automatic reconnect and input monitoring.
 
