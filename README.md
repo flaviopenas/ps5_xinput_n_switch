@@ -9,9 +9,13 @@ This project builds on **FGG STORE / Fathi Ghanem's
 virtual-controller work is the foundation of this project. See
 [credits](CREDITS.md) for the authors, libraries and research used.
 
-**The default build targets firmware 4.03.** The separate 13.60 build has been
-confirmed working by a tester with a USB Xbox controller. Compatibility with
-other firmware versions has not been established.
+**One manager ELF selects its virtual-pad layout at startup.** The provisional
+rule is firmware **up to and including 4.03: 16-byte submissions**; firmware
+**newer than 4.03: 24-byte submissions**. The corresponding report offsets are
+selected together. If firmware detection fails, virtual-pad registration stops.
+4.03 has the controller evidence below; a separate fixed-layout 13.60 build was
+confirmed working with a USB Xbox controller. Other firmware versions and the
+new runtime selection still need console validation.
 
 ## Features and support
 
@@ -39,7 +43,7 @@ need live validation. Xbox BLE input requires the verified report-map prefix;
 this is not a generic Bluetooth HID implementation. Rumble, motion controls,
 adaptive triggers, touch gestures and headset audio are not supported features.
 
-## Run on 4.03
+## Run the manager
 
 1. Sign into a PS5 user, run your jailbreak setup, and start a compatible TCP
    ELF loader on port **9021**.
@@ -76,7 +80,7 @@ prerequisites first. The helper verifies the SDK archive's SHA-256.
 
 ```sh
 bash scripts/setup_sdk.sh
-make                  # firmware 4.03 combined manager and ZIP
+make                  # firmware-detecting combined manager and ZIP
 make -C testing_tools host-test  # optional host tests; no PS5 connection
 ```
 
@@ -119,7 +123,7 @@ a short recent-log replay; the console file may contain earlier test sessions.
 src/app/           Main manager launcher, service and HTTP API
 src/usb/           USB protocols and the combined service scheduler
 src/bluetooth/     Shared radio, pairing, HID profiles, sessions and bonds
-src/platform/      Firmware 4.03 virtual pads, user lookup and logging
+src/platform/      Runtime firmware selection, virtual pads, user lookup and logging
 manager/           Embedded web interface
 mk/                Main manager build configuration and rules
 scripts/           SDK setup, asset embedding and main release packaging

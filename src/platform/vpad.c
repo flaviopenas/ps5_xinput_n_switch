@@ -11,12 +11,18 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#ifdef __FreeBSD__
+#include <ps5/kernel.h>
+#else
+/* Supplied by the host-test firmware fake. */
+extern uint32_t kernel_get_fw_version(void);
+#endif
 
 /* The three ioctls libScePad issues on /dev/hid, with the command word each
  * expects in the first field of its request. */
-#define HID_ADD_DEVICE 0xC018482AUL  /* _IOWR('H', 0x2A, 24) */
-#define HID_INSERT_DATA 0x8010482CUL /* FW 4.03: _IOW('H', 0x2C, 16) */
-#define VPAD_ABI_NAME "4.03"
+#define HID_ADD_DEVICE 0xC018482AUL /* _IOWR('H', 0x2A, 24) */
+#define HID_INSERT_DATA_16 0x8010482CUL
+#define HID_INSERT_DATA_24 0x8018482CUL
 #define HID_DEL_DEVICE 0x80104850UL /* _IOW ('H', 0x50, 16) */
 
 #define HID_CMD_ADD 3
@@ -38,7 +44,25 @@
 #define VP_L2 0x14
 #define VP_R2 0x15
 #define VP_ACTIVE 0x17 /* the library hardcodes 1 here */
-#define VP_MOTION 0x80 /* FW 4.03: eight floats */
+static uint32_t firmware_version;
+static int firmware_checked, wide_request;
+static int select_firmware(void)
+{
+    if (!firmware_checked) {
+        firmware_version = kernel_get_fw_version();
+        firmware_checked = 1;
+        /* Ignore the build/revision half when comparing the firmware version.
+         * Provisional policy: <= 4.03 uses the old ABI, everything newer uses
+         * the 13.60-style ABI. This is a selection rule, not compatibility proof. */
+        wide_request = (firmware_version & 0xffff0000U) > 0x04030000U;
+    }
+    return (firmware_version & 0xffff0000U) != 0 && firmware_version != UINT32_MAX;
+}
+static unsigned motion_offset(void)
+{
+    (void)select_firmware();
+    return wide_request ? 0x78 : 0x80;
+}
 
 /* PlayStation button bits. */
 #define SCE_L3 0x000002
@@ -75,9 +99,15 @@ typedef struct {
     uint32_t reserved;
     const void *data;
 } hid_insert;
+typedef struct {
+    hid_insert base;
+    uint8_t flags;
+    uint8_t padding[7];
+} hid_insert24;
 
 _Static_assert(sizeof(hid_req) == 24, "AddDevice ABI");
 _Static_assert(sizeof(hid_insert) == 16, "FW 4.03 InsertData ABI");
+_Static_assert(sizeof(hid_insert24) == 24, "Newer firmware InsertData ABI");
 _Static_assert(VPAD_REPORT_SIZE == 168, "Translated report buffer ABI");
 
 static int hid_ioctl(int fd, unsigned long operation, void *data)
@@ -109,6 +139,12 @@ struct vpad {
 
 vpad *vpad_open(uint32_t user, char *why, int whylen)
 {
+    if (!select_firmware()) {
+        snprintf(why, (size_t)whylen, "Cannot detect PS5 firmware version (%08X)",
+                 firmware_version);
+        log_line("Virtual pad: %s", why);
+        return NULL;
+    }
     unsigned char desc[VDEV_DESC_SIZE];
     struct vpad *pad = calloc(1, sizeof *pad);
     hid_req req;
@@ -117,8 +153,11 @@ vpad *vpad_open(uint32_t user, char *why, int whylen)
         snprintf(why, (size_t)whylen, "no memory for virtual controller");
         return NULL;
     }
-    log_line("Virtual pad ABI: %s; InsertData %08lX, request %lu bytes, motion offset %02X",
-             VPAD_ABI_NAME, HID_INSERT_DATA, (unsigned long)sizeof(hid_insert), VP_MOTION);
+    log_line("Virtual pad firmware %08X: %s; InsertData %08lX, request %u bytes, "
+             "motion offset %02X (provisional firmware threshold)",
+             firmware_version, wide_request ? ">4.03" : "<=4.03",
+             wide_request ? HID_INSERT_DATA_24 : HID_INSERT_DATA_16, wide_request ? 24U : 16U,
+             motion_offset());
     pad->fd = open("/dev/hid", O_RDWR);
     if (pad->fd < 0) {
         snprintf(why, (size_t)whylen, "/dev/hid: %s", strerror(errno));
@@ -152,14 +191,14 @@ vpad *vpad_open(uint32_t user, char *why, int whylen)
 
 int vpad_submit(vpad *pad, const unsigned char *report)
 {
-    hid_insert req;
+    hid_insert24 req;
     int result;
 
     memset(&req, 0, sizeof req);
-    req.handle = (uint32_t)pad->handle;
-    req.data = report;
+    req.base.handle = (uint32_t)pad->handle;
+    req.base.data = report;
 
-    result = hid_ioctl(pad->fd, HID_INSERT_DATA, &req);
+    result = hid_ioctl(pad->fd, wide_request ? HID_INSERT_DATA_24 : HID_INSERT_DATA_16, &req);
     if (result == 0)
         return 1;
     if (errno == EBUSY)
@@ -344,5 +383,5 @@ void vpad_translate(const unsigned char *gip_report, unsigned char *report)
     report[VP_ACTIVE] = 1;
 
     /* Identity quaternion, so the motion block is at least well formed. */
-    memcpy(report + VP_MOTION + 12, &ident, sizeof ident);
+    memcpy(report + motion_offset() + 12, &ident, sizeof ident);
 }

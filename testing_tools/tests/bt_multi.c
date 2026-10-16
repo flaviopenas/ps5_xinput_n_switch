@@ -26,6 +26,11 @@ static size_t report_map_size;
 static struct { int acl; size_t size; uint8_t data[160]; } messages[512];
 static unsigned message_head, message_tail;
 static unsigned manager_ticks, accepted[BT_MAX_CONTROLLERS];
+static uint8_t saved_classic_address[6];
+static int switch_encryption_readback;
+static unsigned encryption_reads;
+static int known_classic(const uint8_t *address, void *context)
+{ (void)context; return !memcmp(address, saved_classic_address, 6); }
 
 void log_line(const char *fmt, ...) { (void)fmt; }
 void notify(const char *fmt, ...) { (void)fmt; }
@@ -99,7 +104,9 @@ int bt_hci_send(unsigned op, const void *params, size_t size)
         uint8_t key[25]={0x18,23};memcpy(key+2,current->target,6);memset(key+8,0x55,16);key[24]=4;push(0,key,25);
         uint8_t done[5]={6,3,0};put(done+3,current->handle);push(0,done,5);
     } else if(op==0x0413) {
-        uint8_t event[6]={8,4,0,p[0],p[1],1};push(0,event,6);
+        if(!switch_encryption_readback) {
+            uint8_t event[6]={8,4,0,p[0],p[1],1};push(0,event,6);
+        }
     } else if(op==0x200d) {
         if(reject_connect){uint8_t status[6]={0x0f,4,0x0c,1,0x0d,0x20};push(0,status,6);return 1;}
         uint8_t event[21]={0x3e,19,1,0,0,0,0,0};
@@ -131,6 +138,13 @@ int bt_hci_command(unsigned op, const void *params, size_t size, unsigned char *
     }
     if(op==0x1005){reply[1]=128;reply[4]=4;return 8;}
     if(op==0x0c55){reply[1]=1;return 2;}
+    if(op==0x1408){
+        assert(size==2 && word(params)==current->handle);++encryption_reads;
+        reply[0]=switch_encryption_readback==2?0x2f:0;
+        put(reply+1,current->handle+(switch_encryption_readback==3));
+        reply[3]=switch_encryption_readback==4?7:16;
+        return 4;
+    }
     if(op==0x2002){reply[1]=27;reply[3]=1;return 4;}
     return 1;
 }
@@ -296,6 +310,29 @@ int main(void)
     uint8_t saved[64];assert(bt_store_read(paths[3],saved) && !memcmp(saved,"XBCL0001",8) && saved[60]==2);
     bt_session_disconnect(3);assert(bt_session_connected(0)&&bt_session_connected(1)&&bt_session_connected(2));
     sw.fresh_pair=0;early_classic=1;assert(bt_session_start(3,&sw)==1);early_classic=0;
+    /* Missing Encryption Change is recoverable only from affirmative radio
+     * readback for this handle; negative/mismatched/short-key replies fail. */
+    bt_session_disconnect(3);switch_encryption_readback=1;
+    assert(bt_session_start(3,&sw)==1 && encryption_reads==1);
+    bt_session_disconnect(3);
+    for(int mode=2;mode<=4;++mode) {
+        switch_encryption_readback=mode;unsigned count=pad_count;
+        assert(bt_session_start(3,&sw)==0 && pad_count==count);
+        assert(bt_session_connected(0)&&bt_session_connected(1)&&bt_session_connected(2));
+    }
+    switch_encryption_readback=0;
+    assert(bt_session_start(3,&sw)==1);
+    /* A saved Switch powering on between attempts must not disconnect Xbox.
+     * Unknown/native requests still hand the radio back to the system. */
+    bt_session_disconnect(3);
+    memcpy(saved_classic_address,sw.address,6);
+    bt_sessions_set_classic_known(known_classic,NULL);
+    uint8_t wake[12]={4,10};memcpy(wake+2,sw.address,6);wake[11]=1;
+    push(0,wake,sizeof wake);assert(bt_sessions_poll(1)==0);
+    assert(bt_session_connected(0)&&bt_session_connected(1)&&bt_session_connected(2));
+    notification(links[0].handle,2,32768);poll_messages();assert(bits(xbox_pads[0])==0x2000);
+    push(0,native,sizeof native);assert(bt_sessions_poll(1)==4 && !radio_open);
+    bt_sessions_set_classic_known(NULL,NULL);
     bt_sessions_close();
     for(unsigned i=0;i<pad_count;++i)assert(!pads[i].open&&pads[i].deleted==1);
     for(unsigned i=0;i<BT_MAX_CONTROLLERS;++i) unlink(paths[i]);

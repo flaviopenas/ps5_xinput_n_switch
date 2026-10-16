@@ -1,10 +1,12 @@
 # Firmware 13.60 build
 
-Use `ps5-xinput-manager-1360.elf` for the console reported to run 13.60.
-The default `ps5-xinput-manager.elf` continues to use the verified 4.03 layout.
+The main `ps5-xinput-manager.elf` now selects the 24-byte layout automatically
+on firmware newer than 4.03, including 13.60. The separate
+`ps5-xinput-manager-1360.elf` remains a fixed-layout development build.
 On 2026-10-15 the user reported that their friend tested this variant and a USB
 Xbox controller worked. This confirms that test, not general Bluetooth or
-multi-controller compatibility on 13.60. Firmware 4.03 remains the default.
+multi-controller compatibility on 13.60. Runtime selection still needs console
+validation; the <=4.03 / >4.03 threshold is provisional.
 
 The supplied, decrypted `libScePad.sprx` is 227448 bytes with SHA-256:
 

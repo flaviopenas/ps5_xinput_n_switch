@@ -42,6 +42,7 @@ static bt_session_config sessions[BT_MAX_CONTROLLERS];
 static int session_up[BT_MAX_CONTROLLERS], session_results[BT_MAX_CONTROLLERS];
 void bt_sessions_set_control(void (*t)(void *), int (*c)(void *), void *x) { bt_hci_set_control(t,c,x); }
 void bt_sessions_set_advertisement(void (*a)(const bt_advert *, void *), void *x) { (void)a; (void)x; }
+void bt_sessions_set_classic_known(int (*a)(const uint8_t *, void *), void *x) { (void)a; (void)x; }
 int bt_sessions_open(void) { return 1; }
 int bt_session_start(unsigned slot, const bt_session_config *c)
 {

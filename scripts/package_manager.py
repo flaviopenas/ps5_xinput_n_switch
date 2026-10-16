@@ -14,7 +14,7 @@ NOTICES = (
 
 def main():
     suffix = ""
-    firmware = "4.03"
+    firmware = "runtime-selected firmware"
     binaries = ["ps5-xinput-manager.elf"]
     documents = sorted(ROOT.glob("docs/**/*.md"))
     files = [ROOT / name for name in NOTICES] + documents
@@ -37,6 +37,8 @@ def main():
         instructions = f"""# Controller Manager for firmware {firmware}
 
 Load `{binaries[0]}`. The matching service is embedded; one manager ELF is enough.
+Firmware up to and including 4.03 uses the 16-byte virtual-pad ABI; newer firmware
+uses the 24-byte ABI. This threshold is provisional, not a compatibility claim.
 Stop an older manager first: a launcher reuses a service already on port 9030.
 
 The sender/log helpers are available in a source checkout under testing_tools.

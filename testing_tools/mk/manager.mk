@@ -8,9 +8,16 @@ testing_tools/build/1360/vpad.o: testing_tools/src/platform/vpad_variants.c $(PR
 	@mkdir -p testing_tools/build/1360
 	$(CC) $(CFLAGS) -DXINPUT_VERBOSE=0 -DVPAD_FW_1360=1 -c $< -o $@
 
-testing_tools/dist/ps5-xinput-service-1360.elf: testing_tools/build/release/manager_service.o testing_tools/build/release/usb_service.o testing_tools/build/release/gip.o testing_tools/build/release/switch_usb.o testing_tools/build/release/manager_http.o testing_tools/build/release/bt_store.o testing_tools/build/release/bt_session.o testing_tools/build/release/bt_classic.o testing_tools/build/release/bt_xbox.o testing_tools/build/release/bt_timing.o testing_tools/build/release/bt_hog.o testing_tools/build/release/bt_hci.o testing_tools/build/release/bt_advert.o testing_tools/build/release/log.o testing_tools/build/1360/vpad.o testing_tools/build/release/user.o $(BT_CRYPTO_OBJS)
+testing_tools/dist/ps5-xinput-service-1360.elf: testing_tools/build/release/manager_service.o testing_tools/build/release/usb_service.o testing_tools/build/release/gip.o testing_tools/build/release/switch_usb.o testing_tools/build/release/manager_http.o testing_tools/build/release/bt_store.o testing_tools/build/1360/bt_session.o testing_tools/build/release/bt_classic.o testing_tools/build/release/bt_xbox.o testing_tools/build/release/bt_timing.o testing_tools/build/release/bt_hog.o testing_tools/build/release/bt_hci.o testing_tools/build/release/bt_advert.o testing_tools/build/release/log.o testing_tools/build/1360/vpad.o testing_tools/build/release/user.o $(BT_CRYPTO_OBJS)
 	@mkdir -p testing_tools/dist
 	$(CC) -o $@ $^
+
+
+# Use the current shared Bluetooth implementation for the 13.60 manager.
+# Keep preserved standalone/native-baseline builds on their legacy source.
+testing_tools/build/1360/bt_session.o: src/bluetooth/bt_session.c $(PROJECT_HEADERS)
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -DXINPUT_VERBOSE=0 -DBT_HID_CAPTURE=1 -DBT_BRIDGE=1 -DBT_SERVICE=1 -c $< -o $@
 
 testing_tools/build/manager_service_1360_blob.h: testing_tools/dist/ps5-xinput-service-1360.elf scripts/embed_assets.py
 	python3 scripts/embed_assets.py $@ --elf $<

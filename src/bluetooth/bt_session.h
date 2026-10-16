@@ -22,6 +22,8 @@ int bt_session_run(const bt_session_config *config);
  * Setup is serialized; connected peers keep receiving input during setup. */
 void bt_sessions_set_control(void (*tick)(void *), int (*cancelled)(void *), void *context);
 void bt_sessions_set_advertisement(void (*callback)(const bt_advert *, void *), void *context);
+/* Identify saved classic peers between attempts without sending/polling in callbacks. */
+void bt_sessions_set_classic_known(int (*callback)(const uint8_t *, void *), void *context);
 int bt_sessions_open(void);
 int bt_session_start(unsigned slot, const bt_session_config *config);
 int bt_session_connected(unsigned slot);

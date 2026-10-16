@@ -1,4 +1,11 @@
-# Controller Manager for FW 4.03
+# Controller Manager
+
+The main ELF detects firmware through the PS5 Payload SDK and selects one of
+two virtual-pad layouts. Firmware <=4.03 uses a 16-byte InsertData request and
+motion offset 0x80; newer firmware uses a 24-byte request and motion offset 0x78.
+The threshold is provisional. Detection failure stops virtual-pad registration;
+the chosen version/layout is logged when a pad opens. Existing console evidence
+below remains tied to the firmware on which it was measured.
 
 This is the all-in-one USB and Bluetooth entry point. Load only
 `dist/ps5-xinput-manager.elf`: it starts the embedded combined service and

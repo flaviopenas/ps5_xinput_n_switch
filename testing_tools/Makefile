@@ -11,6 +11,7 @@ include testing_tools/mk/common.mk
 include testing_tools/mk/manager.mk
 include testing_tools/mk/usb.mk
 include testing_tools/mk/bluetooth.mk
+include testing_tools/mk/isolated.mk
 include testing_tools/mk/diagnostics.mk
 include testing_tools/mk/tests.mk
 include testing_tools/mk/quality.mk

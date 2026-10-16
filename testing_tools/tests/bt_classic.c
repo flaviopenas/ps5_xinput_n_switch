@@ -59,6 +59,24 @@ int main(void)
     bt_classic_receive(&b,1,response,10); assert(!b.channels[0].configured);
     response[1]=(uint8_t)b.channels[0].config_id;
     bt_classic_receive(&b,1,response,10); assert(b.channels[0].configured);
+    /* Lost connection responses: identical request/id, exponential RTX,
+     * bounded failure, and no RTX while a peer reports Pending. */
+    bt_classic_init(&b,addr);b.command=command;b.send=send;b.authenticated=b.encrypted=1;
+    bt_classic_tick(&b,0);uint8_t original[8];memcpy(original,last,8);
+    unsigned sent=packets;
+    bt_classic_tick(&b,999);assert(packets==sent);
+    bt_classic_tick(&b,1000);assert(packets==sent+1 && !memcmp(last,original,8));
+    bt_classic_tick(&b,2999);assert(packets==sent+1);
+    bt_classic_tick(&b,3000);assert(packets==sent+2 && !memcmp(last,original,8));
+    bt_classic_tick(&b,7000);assert(b.failed && packets==sent+2);
+    bt_classic_init(&b,addr);b.command=command;b.send=send;b.authenticated=b.encrypted=1;
+    bt_classic_tick(&b,0);sent=packets;
+    uint8_t pending[12]={3,(uint8_t)b.channels[0].connect_id,8,0,0,0,0x40,0,1,0,0,0};
+    bt_classic_receive(&b,1,pending,12);bt_classic_tick(&b,10000);
+    assert(!b.failed && packets==sent && b.channels[0].connect_pending);
+    pending[4]=0x60;pending[8]=0;bt_classic_receive(&b,1,pending,12);
+    assert(b.channels[0].remote==0x60 && !b.channels[0].connect_id);
+    sent=packets;bt_classic_tick(&b,11000);assert(packets==sent);
     uint8_t eir[257]={0x2f,255,1,1,2,3,4,5,6};
     eir[11]=8; eir[12]=5; eir[16]=0xd8;
     eir[17]=15; eir[18]=9; memcpy(eir+19,"Pro Controller",14);

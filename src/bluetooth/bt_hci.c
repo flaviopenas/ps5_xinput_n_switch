@@ -49,6 +49,10 @@ static void (*control_tick)(void *);
 static int (*control_cancelled)(void *);
 static void *control_context;
 static int lock_fd = -1;
+static struct {
+    unsigned events, acl, bad_usb, malformed;
+    unsigned connection, authentication, encryption, credits, command;
+} received_stats;
 void bt_hci_set_control(void (*tick)(void *), int (*cancelled)(void *), void *context)
 {
     control_tick = tick;
@@ -88,6 +92,11 @@ void bt_hci_close(void)
         return;
     }
     if (initialized) {
+        log_line("BT radio RX: events %u ACL %u USB errors %u malformed %u; "
+                 "connection %u auth %u encryption %u credits %u command %u",
+                 received_stats.events, received_stats.acl, received_stats.bad_usb,
+                 received_stats.malformed, received_stats.connection, received_stats.authentication,
+                 received_stats.encryption, received_stats.credits, received_stats.command);
         struct usb_fs_uninit uninit;
         log_line("BT radio: releasing shared transfers");
         /* Cancel the whole queue before unsetting any transfer. FreeBSD's
@@ -179,6 +188,7 @@ static int start_read(unsigned index)
 int bt_hci_open(void)
 {
     struct usb_fs_init init;
+    memset(&received_stats, 0, sizeof received_stats);
     lock_fd = open("/data/ps5-xinput/bt-radio.lock", O_CREAT | O_RDWR | O_NOFOLLOW, 0600);
     if (lock_fd < 0 || flock(lock_fd, LOCK_EX | LOCK_NB) != 0) {
         log_line("BT radio: another Bluetooth payload owns the radio, or lock unavailable");
@@ -291,20 +301,43 @@ int bt_hci_poll(unsigned timeout_ms, bt_hci_event_fn handler, void *context)
         size_t capacity = index < READS ? EVENT_SIZE : BUFFER_SIZE;
         size_t header = index < READS ? 2 : 4;
         if (endpoints[index].status == 0 && endpoints[index].aFrames && received <= capacity) {
-            for (size_t at = 0; at + header <= received;) {
+            size_t at = 0;
+            for (; at + header <= received;) {
                 const unsigned char *event = buffers[index] + at;
                 size_t size = index < READS ? 2 + event[1] : 4 + word(event + 2);
-                if (size > received - at)
+                if (size > received - at) {
+                    if (++received_stats.malformed <= 3)
+                        log_line("BT radio RX: truncated %s packet; index %u bytes %lu need %lu",
+                                 index < READS ? "event" : "ACL", index,
+                                 (unsigned long)(received - at), (unsigned long)size);
                     break;
+                }
                 if (index < READS) {
+                    ++received_stats.events;
+                    received_stats.connection += event[0] == 3;
+                    received_stats.authentication += event[0] == 6;
+                    received_stats.encryption += event[0] == 8 || event[0] == 0x59;
+                    received_stats.credits += event[0] == 0x13;
+                    received_stats.command += event[0] == 0x0e || event[0] == 0x0f;
                     if (handler)
                         handler(event, size, context);
                     else if (other_event)
                         other_event(event, size, handler_context);
-                } else if (acl_handler)
-                    acl_handler(event, size, handler_context);
+                } else {
+                    ++received_stats.acl;
+                    if (acl_handler)
+                        acl_handler(event, size, handler_context);
+                }
                 at += size;
             }
+            if (received - at && received - at < header && ++received_stats.malformed <= 3)
+                log_line("BT radio RX: short %s header; index %u bytes %lu",
+                         index < READS ? "event" : "ACL", index, (unsigned long)(received - at));
+        } else {
+            if (++received_stats.bad_usb <= 3)
+                log_line("BT radio RX: unusable transfer index %u status %u frames %u bytes %lu",
+                         index, endpoints[index].status, endpoints[index].aFrames,
+                         (unsigned long)received);
         }
         if (!start_read(index)) {
             log_line("BT radio: restart event read errno %d", errno);

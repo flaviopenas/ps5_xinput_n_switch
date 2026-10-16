@@ -6,9 +6,13 @@ PS5 XInput Controller Manager lets supported Xbox and 8BitDo controllers control
 a PS5 through USB and Bluetooth. A native background service owns
 the controllers and serves an embedded web interface.
 
-The main project has **one public payload, targeting firmware 4.03**:
+The main project has **one public payload with runtime firmware selection**:
 `dist/ps5-xinput-manager.elf`. It embeds a matching service ELF built internally
 at `build/ps5-xinput-service.elf`. Closing the browser does not stop the service.
+The provisional ABI rule is firmware <=4.03: 16-byte submissions and motion
+offset 0x80; firmware >4.03: 24-byte submissions and motion offset 0x78. This
+threshold is user-authorized; it does not establish compatibility on untested
+firmware. Firmware detection failure must prevent virtual-pad registration.
 
 Everything outside that main product belongs in `testing_tools/`. This includes
 host tests, diagnostics, standalone payloads, alternate firmware builds, helper
@@ -32,7 +36,7 @@ src/
   app/                           Manager launcher, service and HTTP API
   usb/                           USB protocols and combined-service scheduler
   bluetooth/                     Radio transport, protocols, pairing and sessions
-  platform/                      Firmware 4.03 virtual pads, user lookup and logs
+  platform/                      Runtime firmware selection, virtual pads, users and logs
 
 manager/                         Embedded HTML, CSS and JavaScript
 mk/
@@ -101,7 +105,7 @@ archived files under `testing_tools/artifacts/` as current build outputs.
 | `src/bluetooth/bt_classic.c`, `bt_classic.h` | Switch Pro protocol over classic Bluetooth, including Ultimate 2C input |
 | `src/bluetooth/bt_store.c`, `bt_store.h` | Private saved bonds and reconnect preferences |
 | `src/bluetooth/bt_timing.c`, `bt_timing.h` | Independent per-link report-arrival and submission statistics |
-| `src/platform/vpad.c`, `vpad.h` | Firmware 4.03 `/dev/hid` requests and normalized-input translation |
+| `src/platform/vpad.c`, `vpad.h` | Runtime firmware/ABI selection, `/dev/hid` requests and normalized-input translation |
 | `src/platform/user.c`, `user.h` | Resolve the PS5 user owning a virtual controller |
 | `src/platform/log.c`, `log.h` | Append-only console logs, UDP streaming, notifications and cleanup requests |
 
@@ -119,8 +123,8 @@ raw controller HID reports, `ScePadData`, and the kernel-facing virtual report.
   The main product has been built successfully with that directory absent.
 - Publish only the manager ELF in main `dist/`; its service ELF is internal.
   A ZIP and checksum are packaging outputs, not additional payloads.
-- Main sources contain the 4.03 implementation. The 13.60 virtual-pad variant
-  and legacy entry points are preserved separately under `testing_tools/src`.
+- Main sources select the 16/24-byte ABI using the provisional firmware threshold.
+  Fixed 13.60 variants and legacy entry points remain under `testing_tools/src`.
 - USB controllers own separate device handles, virtual pads and recovery state.
   Bluetooth links own separate protocol state, input queues, pads and bonds.
 - Bluetooth links share one HCI transport/reader. Preserve peer input during

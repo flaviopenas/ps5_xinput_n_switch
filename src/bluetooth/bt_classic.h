@@ -8,6 +8,9 @@
 typedef struct {
     unsigned local, remote, mtu, connect_id, config_id;
     int requested, configured, peer_configured;
+    unsigned connect_attempts;
+    int connect_pending;
+    int64_t connect_at;
 } bt_hid_channel;
 typedef struct {
     uint8_t address[6], key[16], key_type;

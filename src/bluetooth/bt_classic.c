@@ -46,6 +46,10 @@ void bt_classic_event(bt_classic *b, const uint8_t *p, size_t n, int64_t now)
 {
     if (n < 2 || p[1] != n - 2)
         return;
+    if (!b->ready && p[0] == 0x0f && n == 6 &&
+        (word(p + 4) == 0x0405 || word(p + 4) == 0x0409 ||
+         word(p + 4) == 0x0411 || word(p + 4) == 0x0413))
+        log_line("BT Switch: HCI command %04X status %02X", word(p + 4), p[2]);
     uint8_t reply[32] = {0};
     if (p[0] == 0x03 && n == 13 && !memcmp(p + 5, b->address, 6) && (p[2] || p[11] == 1) &&
         !b->auth_sent) {
@@ -192,6 +196,8 @@ static void signalling(bt_classic *b, const uint8_t *p, size_t n)
     for (size_t at = 0; at < n;) {
         unsigned code = p[at], id = p[at + 1], len = word(p + at + 2);
         const uint8_t *v = p + at + 4;
+        if (!b->ready)
+            log_line("BT Switch: L2CAP signal %02X id %u length %u", code, id, len);
         uint8_t reply[64] = {0};
         size_t reply_size = 0;
         unsigned reply_code = 0;
@@ -219,13 +225,18 @@ static void signalling(bt_classic *b, const uint8_t *p, size_t n)
             bt_hid_channel *c = channel(b, word(v + 2));
             if (c && c->connect_id == id) {
                 unsigned result = word(v + 4);
+                log_line("BT Switch: HID channel %04X connection result %u status %u",
+                         c->local, result, word(v + 6));
                 if (!result && word(v) >= 0x40) {
                     c->remote = word(v);
                     c->connect_id = 0;
+                    c->connect_pending = 0;
                     log_line("BT Switch: HID channel %04X opened", c->local);
                     if (!configure(b, c))
                         b->failed = 1;
-                } else if (result != 1) {
+                } else if (result == 1) {
+                    c->connect_pending = 1;
+                } else {
                     b->failed = 1;
                     log_line("BT Switch: HID channel rejected, result %u", result);
                 }
@@ -438,12 +449,27 @@ void bt_classic_tick(bt_classic *b, int64_t now)
         bt_hid_channel *c = &b->channels[i];
         if (i && (!b->channels[0].configured || !b->channels[0].peer_configured))
             return;
-        if (!c->requested) {
+        int retry = c->requested && c->connect_id && !c->connect_pending &&
+                    now >= c->connect_at;
+        if (!c->requested || retry) {
+            if (retry && c->connect_attempts >= 3) {
+                b->failed = 1;
+                log_line("BT Switch: HID channel %04X response timeout after %u requests",
+                         c->local, c->connect_attempts);
+                return;
+            }
             uint8_t request[4];
             put(request, i ? 0x13 : 0x11);
             put(request + 2, c->local);
             c->requested = 1;
-            c->connect_id = next_id(b);
+            if (!retry)
+                c->connect_id = next_id(b);
+            ++c->connect_attempts;
+            /* L2CAP RTX: duplicate requests retain the identifier; double
+             * the wait after each retry (1, 2, 4 seconds), then stop. */
+            c->connect_at = now + (1000 << (c->connect_attempts - 1));
+            log_line("BT Switch: requesting HID PSM %04X local %04X id %u",
+                     word(request), c->local, c->connect_id);
             if (!signal_packet(b, 2, c->connect_id, request, 4))
                 b->failed = 1;
             return;

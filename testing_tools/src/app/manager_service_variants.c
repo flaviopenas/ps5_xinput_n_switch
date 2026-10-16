@@ -124,6 +124,13 @@ static int saved_index(const char *id)
             return i;
     return -1;
 }
+static int classic_saved(const uint8_t *address, void *unused)
+{
+    (void)unused;
+    char id[BT_DEVICE_ID_SIZE];
+    bt_device_id(id, address, 2);
+    return saved_index(id) >= 0;
+}
 static int discovered_index(const char *id)
 {
     char candidate[BT_DEVICE_ID_SIZE];
@@ -658,6 +665,7 @@ int main(void)
                 controllers[i].automatic[0] = 0;
     }
     bt_sessions_set_control(tick, cancelled, NULL);
+    bt_sessions_set_classic_known(classic_saved, NULL);
 #ifdef MANAGER_BT_MANUAL_START
     /* Behavior baseline: retain the stored preference, but do not open the
      * shared radio until an explicit UI command. No bond files are changed. */

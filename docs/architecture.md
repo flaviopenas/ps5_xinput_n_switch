@@ -1,6 +1,7 @@
 # Architecture and code ownership
 
-The default product is a firmware 4.03 launcher plus one controller service.
+The default product is one launcher plus one controller service with runtime
+firmware selection for virtual-pad submission.
 The launcher embeds the service ELF from `build/ps5-xinput-service.elf`, starts it through the console's existing
 ELF loader, opens the manager page, and exits. The service owns controllers
 and remains active after the page closes.
@@ -65,10 +66,19 @@ shared dependency is intentional; the transport framing lives in `bt_classic.c`.
 ## Firmware boundary
 
 Firmware-specific input submission is isolated in `src/platform/vpad.c`.
-The production object contains only the verified 4.03 request. The alternate
-13.60 implementation and experimental shell hooks are preserved separately in
-`testing_tools/src/platform/vpad_variants.c`. They are not compiled or included
-by the main build. There is no automatic firmware detection or ioctl fallback.
+The production object reads firmware through the pinned SDK's
+`kernel_get_fw_version()` and selects the request and report offsets together.
+The provisional rule is <=4.03: ioctl 0x8010482C, 16-byte request, motion offset
+0x80; >4.03: ioctl 0x8018482C, 24-byte request, motion offset 0x78. The lower
+build/revision bits are excluded from the version comparison. Selection is
+cached for the process before report translation and virtual-pad registration;
+an unreadable firmware version prevents registration. There is no ioctl probing
+or fallback to a different layout after a failed submission.
+
+This threshold does not establish support for every firmware in either range.
+The fixed 13.60 implementation and experimental shell hooks remain separately
+in `testing_tools/src/platform/vpad_variants.c` for comparison. They are not
+compiled or included by the main build.
 
 `make -C testing_tools manager-1360` compiles a separate virtual-pad object, service, embedded
 blob and launcher. This keeps profiles from accidentally sharing an embedded

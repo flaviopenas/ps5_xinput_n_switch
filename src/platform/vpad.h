@@ -2,7 +2,8 @@
  *
  * libScePad's virtual-device functions turn out to be thin wrappers over three
  * ioctls on /dev/hid. The submission request and report layout below were
- * checked against FW 4.03 libScePad and tested for Xbox shell navigation.
+ * checked against FW 4.03 and 13.60 libScePad layouts. Runtime selection is
+ * provisional: <=4.03 uses 16-byte submissions, newer uses 24-byte submissions.
  *
  * Virtual-pad exports are not called; their code is read separately for ABI
  * diagnostics. No remote shell binding is required for accepted submissions.

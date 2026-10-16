@@ -73,6 +73,8 @@ static int (*manager_cancel)(void *);
 static void *manager_context;
 static void (*scan_advertisement)(const bt_advert *, void *);
 static void *scan_context;
+static int (*classic_known)(const uint8_t *, void *);
+static void *classic_known_context;
 static void dispatch_event(const uint8_t *, size_t, void *);
 static void dispatch_acl(const uint8_t *, size_t, void *);
 static void radio_tick(void *);
@@ -201,6 +203,8 @@ static void event(const uint8_t *p, size_t size, void *unused)
         }
         current->encrypted = current->classic.encrypted;
         if (p[0] == 5 && size == 6 && current->connected && word(p + 3) == current->handle) {
+            log_line("BT Switch: radio disconnected handle %u status %02X reason %02X",
+                     current->handle, p[2], p[5]);
             current->connected = 0;
             current->in_flight = 0;
         }
@@ -599,7 +603,7 @@ int bt_session_start(unsigned slot, const bt_session_config *config)
     const uint8_t scan_params[7] = {1, 0xa0, 0, 0x50, 0, 0, 0}, enable[2] = {1, 0},
                   disable[2] = {0, 0};
     vpad_input_init(&current->pad_input);
-    log_line("BT input: experimental Bluetooth controller bridge, FW 4.03");
+    log_line("BT input: experimental Bluetooth controller bridge");
     stage("Connecting");
     log_line("BT pair: selected target %02X:%02X:%02X:%02X:%02X:%02X", current->target[5],
              current->target[4], current->target[3], current->target[2], current->target[1],
@@ -979,10 +983,32 @@ static int classic_start(void)
             goto done;
     }
     int64_t deadline = milliseconds() + 30000;
+    int64_t authenticated_at = 0;
+    int encryption_checked = 0;
     while (!session_stopping() && !b->failed && milliseconds() < deadline) {
         if (setup_poll(10) < 0)
             break;
         classic_drain();
+        if (b->authenticated && !authenticated_at)
+            authenticated_at = milliseconds();
+        if (current->connected && b->authenticated && !b->encrypted && !encryption_checked &&
+            milliseconds() - authenticated_at >= 2000) {
+            uint8_t handle[2];
+            put(handle, current->handle);
+            encryption_checked = 1;
+            n = bt_hci_command(0x1408, handle, sizeof handle, reply, sizeof reply);
+            log_line("BT Switch: encryption readback length %d status %02X key bytes %u", n,
+                     n > 0 ? reply[0] : 0xff, n >= 4 && !reply[0] ? reply[3] : 0);
+            /* Read Encryption Key Size fails with 0x2F on an unencrypted link.
+             * Recover a missed event only from a matching, still-live handle
+             * and a controller-confirmed full-size key, never command status. */
+            if (n == 4 && !reply[0] && word(reply + 1) == current->handle && reply[3] == 16 &&
+                current->connected && !b->failed && !b->encrypted) {
+                b->encrypted = current->encrypted = 1;
+                b->open_at = milliseconds() + 200;
+                log_line("BT Switch: encrypted link verified by radio readback");
+            }
+        }
         if (b->ready && current->connected && b->encrypted) {
             stage("Saving Switch pairing");
             if (b->key_changed || current->config.fresh_pair) {
@@ -1010,6 +1036,10 @@ static int classic_start(void)
     log_line("BT Switch: setup failed; status %d authenticated %d encrypted %d profile %d stage %d",
              current->connection_status, b->authenticated, b->encrypted, b->info_verified,
              b->controller.stage);
+    for (unsigned i = 0; i < 2; ++i)
+        log_line("BT Switch: channel %04X remote %04X requested %d configured %d peer %d",
+                 b->channels[i].local, b->channels[i].remote, b->channels[i].requested,
+                 b->channels[i].configured, b->channels[i].peer_configured);
 done:
     bt_wipe(record, sizeof record);
     current->result = native_retry ? 4 : current->connection_status == 0x0c ? 3 : 0;
@@ -1031,6 +1061,15 @@ static void dispatch_event(const uint8_t *p, size_t size, void *unused)
             if (links[i].occupied && links[i].target_type == BT_ADDRESS_CLASSIC &&
                 !memcmp(p + 2, links[i].target, 6))
                 owned = 1;
+        int saved = !owned && classic_known && classic_known(p + 2, classic_known_context);
+        log_line("BT radio: classic request %02X:%02X:%02X:%02X:%02X:%02X; active %d saved %d",
+                 p[7], p[6], p[5], p[4], p[3], p[2], owned, saved);
+        if (!owned && saved) {
+            /* A saved Switch requesting reconnect is not a native controller.
+             * Leave connection setup to the manager; preserve ready peer input. */
+            log_line("BT radio: saved Switch request; preserving managed links");
+            return;
+        }
         if (!owned) {
             native_retry = 1;
             log_line("BT radio: native controller requested connection; yielding managed links");
@@ -1117,6 +1156,11 @@ void bt_sessions_set_advertisement(void (*callback)(const bt_advert *, void *), 
     scan_advertisement = callback;
     scan_context = context;
 }
+void bt_sessions_set_classic_known(int (*callback)(const uint8_t *, void *), void *context)
+{
+    classic_known = callback;
+    classic_known_context = context;
+}
 int bt_sessions_open(void)
 {
     bt_hci_set_handlers(dispatch_event, dispatch_acl, NULL);
@@ -1198,6 +1242,11 @@ void bt_session_disconnect(unsigned slot)
         return;
     bt_link *previous = current;
     current = &links[slot];
+    if (current->target_type == BT_ADDRESS_CLASSIC)
+        log_line("BT Switch: cleanup slot %u connected %d ready %d encrypted %d failed %d "
+                 "pad stop %d result %d",
+                 slot + 1, current->connected, current->ready, current->encrypted,
+                 current->classic.failed, current->bridge_stop, current->result);
     if (native_retry) {
         bt_sessions_close();
         current = previous;
